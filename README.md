@@ -4,14 +4,15 @@
 
 Reconstructing image/movie from their features in arbitrary CNN model written in pytorch
 
-|            | Image1 | Image2 | image3 |
-| ---------- | ------ | ------ | ------ |
-| Images     |        |        |        |
-| feature[0] |        |        |        |
-| feature[3] |        |        |        |
-|            |        |        |        |
-|            |        |        |        |
-|            |        |        |        |
+|                 | Image1                                                       | Image2                                                       |
+| --------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
+| Original images | ![image_1](image_gallery/image_1.jpg)                        | ![image_2](image_gallery/image_2.jpg)                        |
+| feature[0]      | ![recon-image_1-features[0]](image_gallery/image_1/recon-image_1-features[0].jpg) | ![recon-image_2-features[0]](image_gallery/image_2/recon-image_2-features[0].jpg) |
+| feature[2]      | ![recon-image_1-features[2]](image_gallery/image_1/recon-image_1-features[2].jpg) | ![recon-image_2-features[2]](image_gallery/image_2/recon-image_2-features[2].jpg) |
+| features[10]    | ![recon-image_1-features[10]](image_gallery/image_1/recon-image_1-features[10].jpg) | ![recon-image_2-features[10]](image_gallery/image_2/recon-image_2-features[10].jpg) |
+| features[12]    | ![recon-image_1-features[12]](image_gallery/image_1/recon-image_1-features[12].jpg) | ![recon-image_2-features[12]](image_gallery/image_2/recon-image_2-features[12].jpg) |
+| features[21]    | ![recon-image_1-features[21]](image_gallery/image_1/recon-image_1-features[21].jpg) | ![recon-image_2-features[21]](image_gallery/image_2/recon-image_2-features[21].jpg) |
+| classifier[0]   | ![recon-image_1-classifier[0]](image_gallery/image_1/recon-image_1-classifier[0].jpg) | ![recon-image_2-classifier[0]](image_gallery/image_2/recon-image_2-classifier[0].jpg) |
 
 These images are reconstuctred from the activation (features) of layers in VGG16 trained on ImageNet dataset. You can reconstruct arbitorary images/videos from their features such as AlexNet, ResNet, DenseNet, and other architecture written in pytorch.
 
