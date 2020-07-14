@@ -133,7 +133,7 @@ def normalise_vid(vid):
     return vid
 
 
-def get_cnn_features(model, input, extract_feat_list):
+def get_cnn_features_old(model, input, extract_feat_list):
     net = copy.deepcopy(model)
     outputs = []
 
@@ -148,6 +148,30 @@ def get_cnn_features(model, input, extract_feat_list):
 
     return outputs
 
+def get_cnn_features(model, input, extract_feat_list, prehook_dict = {}):
+    """
+    using the option of prehook dict, the activation pre apply fucntion (val is a list ( -1 is allowed))
+    """
+    net = copy.deepcopy(model)
+    outputs = []
+
+    def hook(module, input, output):
+        outputs.append(output.clone())
+    def hook_pre(module, input):
+        for v in val_list:
+            outputs.append(input[0][v].clone())
+
+    # run the code in exec_code
+    for exec_str in extract_feat_list:
+        if exec_str not in prehook_dict:
+            exec("net." + exec_str + ".register_forward_hook(hook)")
+        else:
+            val_list = prehook_dict[exec_str]
+            exec("net." + exec_str + ".register_forward_pre_hook(hook_pre)")
+    outputs = []
+    _ = net(input)
+
+    return outputs
 
 def get_target_feature_shape(model, input, exec_code_list):
     '''exec_code_list is only allowed one element list'''

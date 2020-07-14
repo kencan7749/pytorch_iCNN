@@ -24,6 +24,7 @@ def reconstruct_stim(features, net,
                      input_size=(224, 224, 3),
                      layer_weight=None, channel=None, mask=None,
                      opt_name='SGD',
+                     prehook_dict = {},
                      lr_start=0.02, lr_end=1e-12,
                       momentum_start=0.9, momentum_end=0.9,
                       decay_start=0.02, decay_end=1e-11,
@@ -155,7 +156,7 @@ def reconstruct_stim(features, net,
             op = optim.RMSprop([input])
         elif opt_name == 'Rprop':
             op = optim.Rprop([input])
-        fw = get_cnn_features(net, input, features.keys())
+        fw = get_cnn_features(net, input, features.keys(), prehook_dict)
         # backward for net
         err = 0.
         loss = 0.
