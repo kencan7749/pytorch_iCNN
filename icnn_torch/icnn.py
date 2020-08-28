@@ -11,8 +11,8 @@ import torch.optim as optim
 import torch
 from loss import MSE_with_regulariztion
 from utils import img_deprocess, img_preprocess, normalise_img, \
-    vid_deprocess, normalise_vid, vid_preprocess, clip_extreme_pixel, get_cnn_features, create_feature_masks,\
-    save_video, save_gif, gaussian_blur, clip_small_norm_pixel
+    vid_deprocess, normalise_vid, vid_preprocess, clip_extreme_value, get_cnn_features, create_feature_masks,\
+    save_video, save_gif, gaussian_blur, clip_small_norm_value
 
 
 def reconstruct_stim(features, net,
@@ -22,14 +22,16 @@ def reconstruct_stim(features, net,
                      bgr=False,
                      initial_input=None,
                      input_size=(224, 224, 3),
+                     feature_masks=None,
                      layer_weight=None, channel=None, mask=None,
                      opt_name='SGD',
                      prehook_dict = {},
                      lr_start=0.02, lr_end=1e-12,
-                      momentum_start=0.9, momentum_end=0.9,
+                      momentum_start=0.009, momentum_end=0.009,
                       decay_start=0.02, decay_end=1e-11,
+                      grad_normalize = True,
                       image_jitter=False, jitter_size=4,
-                      image_blur=False, sigma_start=0.02, sigma_end=0.005,
+                      image_blur=True, sigma_start=2, sigma_end=0.5,
                       p=3, lamda=0.5,
                       TVlambda = [0,0],
                       clip_extreme=False, clip_extreme_every=4, e_pct_start=1, e_pct_end=1,
@@ -110,7 +112,8 @@ def reconstruct_stim(features, net,
             layer_weight[layer] = weights[j]
 
     # feature mask
-    feature_masks = create_feature_masks(layer_dict, masks=mask, channels=channel)
+    if feature_masks is None:
+        feature_masks = create_feature_masks(layer_dict, masks=mask, channels=channel)
 
     # iteration for gradient descent
     input = initial_input.copy().astype(np.float32)
@@ -136,36 +139,39 @@ def reconstruct_stim(features, net,
         # forward
         input = torch.tensor(input[np.newaxis], requires_grad=True)
         if opt_name == 'Adam':
+            #op = optim.Adam([input], lr = lr)
             op = optim.Adam([input], lr = lr)
         elif opt_name == 'SGD':
             op = optim.SGD([input], lr=lr, momentum=momentum)
+            #op = optim.SGD([input], lr=lr)
         elif opt_name == 'Adadelta':
-            op = optim.Adadelta([input])
+            op = optim.Adadelta([input],lr = lr)
         elif opt_name == 'Adagrad':
-            op = optim.Adagrad([input])
+            op = optim.Adagrad([input], lr = lr)
         elif opt_name == 'AdamW':
-            op = optim.AdamW([input])
+            op = optim.AdamW([input], lr = lr)
         elif opt_name == 'SparseAdam':
-            op = optim.SparseAdam([input])
+            op = optim.SparseAdam([input], lr = lr)
         elif opt_name == 'Adamax':
-            op = optim.Adamax([input])
+            op = optim.Adamax([input], lr = lr)
         elif opt_name == 'ASGD':
-            op = optim.ASGD([input])
+            op = optim.ASGD([input], lr = lr)
 
         elif opt_name == 'RMSprop':
-            op = optim.RMSprop([input])
+            op = optim.RMSprop([input], lr = lr)
         elif opt_name == 'Rprop':
-            op = optim.Rprop([input])
+            op = optim.Rprop([input], lr = lr)
         fw = get_cnn_features(net, input, features.keys(), prehook_dict)
         # backward for net
         err = 0.
         loss = 0.
         # set the grad of network to 0
         net.zero_grad()
+        op.zero_grad()
         for j in range(num_of_layer):
 
             # op.zero_grad()
-            op.zero_grad()
+            
             target_layer_id = num_of_layer -1 -j
             target_layer = layer_list[target_layer_id]
             # extract activation or mask at input true video, and mask
@@ -184,7 +190,10 @@ def reconstruct_stim(features, net,
             loss_j.backward(retain_graph=True)
 
             loss += loss_j.detach().numpy()
-
+        if grad_normalize:
+            grad_mean = torch.abs(input.grad).mean()
+            if grad_mean > 0:
+                input.grad /= grad_mean
         op.step()
 
         input = input.detach().numpy()[0]
@@ -195,12 +204,12 @@ def reconstruct_stim(features, net,
         # clip pixels with extreme value
         if clip_extreme and (t+1) % clip_extreme_every == 0:
             e_pct = e_pct_start + t * (e_pct_end - e_pct_start) / iter_n
-            input = clip_extreme_pixel(input, e_pct)
+            input = clip_extreme_value(input, e_pct)
 
         # clip pixels with small norm
         if clip_small_norm and (t+1) % clip_small_norm_every == 0:
             n_pct = n_pct_start + t * (n_pct_end - n_pct_start) / iter_n
-            input = clip_small_norm_pixel(input, n_pct)
+            input = clip_small_norm_value(input, n_pct)
 
         # unshift
         if image_jitter:

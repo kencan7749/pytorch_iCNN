@@ -279,7 +279,7 @@ def gaussian_blur_vid(vid, sigma_xy, sigma_t):
     return vid
 
 
-def clip_extreme_pixel(img, pct=1):
+def clip_extreme_value(img, pct=1):
     '''clip the pixels with extreme values'''
     if pct < 0:
         pct = 0.
@@ -291,7 +291,7 @@ def clip_extreme_pixel(img, pct=1):
     return img
 
 
-def clip_small_norm_pixel(img, pct=1):
+def clip_small_norm_value(img, pct=1):
     '''clip pixels with small RGB norm'''
     if pct < 0:
         pct = 0.
@@ -308,7 +308,7 @@ def clip_small_norm_pixel(img, pct=1):
     return img
 
 
-def clip_small_contribution_pixel(img, grad, pct=1):
+def clip_small_contribution_value(img, grad, pct=1):
     '''clip pixels with small contribution'''
     if pct < 0:
         pct = 0.
@@ -437,12 +437,12 @@ def estimate_cnn_feat_std(cnn_feat):
             feat_ndim == 3 and feat_size[1] == 1 and feat_size[2] == 1):
         cnn_feat_std = np.std(cnn_feat)
     # for the case of conv layers
-    elif feat_ndim == 3 and (feat_size[1] > 1 or feat_size[2] > 1):
+    elif feat_ndim >= 3 and (feat_size[1] > 1 or feat_size[2] > 1):
         num_of_ch = feat_size[0]
         # std for each channel
         cnn_feat_std = np.zeros(num_of_ch, dtype='float32')
         for j in range(num_of_ch):
-            feat_ch = cnn_feat[j, :, :]
+            feat_ch = cnn_feat[j]
             cnn_feat_std[j] = np.std(feat_ch)
         cnn_feat_std = np.mean(cnn_feat_std)  # std averaged across channels
     return cnn_feat_std
