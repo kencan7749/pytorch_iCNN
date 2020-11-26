@@ -9,7 +9,7 @@ import numpy as np
 import PIL.Image
 import torch.optim as optim
 import torch
-from loss import MSE_with_regulariztion, CorrLoss
+from loss import *
 from utils import img_deprocess, img_preprocess, normalise_img, \
     vid_deprocess, normalise_vid, vid_preprocess, clip_extreme_value, get_cnn_features, create_feature_masks,\
     save_video, save_gif, gaussian_blur, clip_small_norm_value
@@ -38,7 +38,8 @@ def reconstruct_stim(features, net,
                       clip_extreme=False, clip_extreme_every=4, e_pct_start=1, e_pct_end=1,
                       clip_small_norm=False, clip_small_norm_every=4, n_pct_start=5., n_pct_end=5.,
 
-                     loss_type='l2', iter_n=200,  save_intermediate=False,
+                     loss_type='l2', iter_n=200, loss_weight = None,
+                     save_intermediate=False,
                      save_intermediate_every=1, save_intermediate_path=None,
                      disp_every=1,
                      ):
@@ -48,6 +49,12 @@ def reconstruct_stim(features, net,
         loss_fun = MSE_with_regulariztion(L_lambda=lamda, alpha=p, TV_lambda=TVlambda)
     elif loss_type == "CorrLoss":
         loss_fun = CorrLoss()
+    elif loss_type == "FeatCorrLoss":
+        loss_fun = FeatCorrLoss()
+    elif loss_type == "MSE_Corr_FeatCorr":
+        loss_fun = MergeLoss([torch.nn.MSELoss(reduction='sum'),CorrLoss(), FeatCorrLoss() ], weight_list = loss_weight)
+    elif loss_type == "MSE_FeatCorr":
+        loss_fun = MergeLoss([torch.nn.MSELoss(reduction='sum'), FeatCorrLoss() ], weight_list = loss_weight)
     else:
         assert loss_type + ' is not correct'
     # make save dir
@@ -184,6 +191,9 @@ def reconstruct_stim(features, net,
             
             masked_act_j = torch.masked_select(act_j, torch.FloatTensor(mask_j).bool())
             masked_feat_j = torch.masked_select(feat_j, torch.FloatTensor(mask_j).bool())
+            #if loss_type == 'FeatCorrLoss':
+            masked_act_j = masked_act_j.view(act_j.shape)
+            masked_feat_j = masked_feat_j.view(feat_j.shape)
             # calculate loss using pytorch loss function
             loss_j = loss_fun(masked_act_j, masked_feat_j) * layer_weight_j
 
