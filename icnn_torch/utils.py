@@ -416,7 +416,33 @@ def create_feature_masks(features, masks=None, channels=None):
 
     return feature_masks
 
+def ME_estimate_cnn_feat_std(cnn_feat):
+    '''
+    estimate the std of the CNN features
 
+    INPUT:
+        cnn_feat: CNN feature array [channel,dim1,dim2] or [1,channel];
+
+    OUTPUT:
+        cnn_feat_std: std of the CNN feature,
+        here the std of each channel is estimated first,
+        then average std across channels;
+    '''
+    feat_ndim = cnn_feat.ndim
+    feat_size = cnn_feat.shape
+    # for the case of fc layers
+    if feat_ndim == 1:
+        cnn_feat_std = np.std(cnn_feat)
+    # for the case of conv layers
+    else:
+        num_of_ch = feat_size[0]
+        # std for each channel
+        cnn_feat_std = np.zeros(num_of_ch, dtype='float32')
+        for j in range(num_of_ch):
+            feat_ch = cnn_feat[j]
+            cnn_feat_std[j] = np.std(feat_ch)
+        #cnn_feat_std = np.mean(cnn_feat_std)  # std averaged across channels
+    return cnn_feat_std
 
 def estimate_cnn_feat_std(cnn_feat):
     '''

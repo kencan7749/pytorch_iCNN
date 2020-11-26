@@ -9,37 +9,35 @@ import numpy as np
 import PIL.Image
 import torch.optim as optim
 import torch
-from loss import *
+from loss import MSE_with_regulariztion
 from utils import img_deprocess, img_preprocess, normalise_img, \
     vid_deprocess, normalise_vid, vid_preprocess, clip_extreme_value, get_cnn_features, create_feature_masks,\
-    save_video, save_gif, gaussian_blur, clip_small_norm_value
+    save_video, save_gif, gaussian_blur
+from utils_hts import vid2flow, flow2vid, flow_preprocess, flow_deprocess, flow_norm
 
 
 def reconstruct_stim(features, net,
-                     img_mean=np.array((0, 0, 0)).astype(np.float32),
-                     img_std=np.array((1, 1, 1)).astype(np.float32),
-                     norm=255,
-                     bgr=False,
+                     img_mean=np.array([104,117,123] * 11).astype(np.float32),
+                     img_std=np.array([1,1,1] * 11).astype(np.float32),
+                     norm=1,
+                     bgr = False,
                      initial_input=None,
-                     input_size=(224, 224, 3),
-                     feature_masks=None,
+                     input_size=(11, 224, 224, 3),
                      layer_weight=None, channel=None, mask=None,
                      opt_name='SGD',
                      prehook_dict = {},
-                     lr_start=2., lr_end=1e-10,
+                     lr_start= 2., lr_end=1e-10,
                       momentum_start=0.9, momentum_end=0.9,
                       pix_decay = True,decay_start=0.2, decay_end=1e-10,
-                      grad_normalize = True,
                       image_jitter=False, jitter_size=4,
-                      image_blur=True, sigma_start=2, sigma_end=0.5,
+                      image_blur=True, sigma_start=0.2, sigma_end=0.5,
+                      grad_normalize = True,
                       p=3, lamda=0.5,
                       TVlambda = [0,0],
-                     
                       clip_extreme=False, clip_extreme_every=4, e_pct_start=1, e_pct_end=1,
                       clip_small_norm=False, clip_small_norm_every=4, n_pct_start=5., n_pct_end=5.,
 
-                     loss_type='l2', iter_n=200, loss_weight = None,
-                     save_intermediate=False,
+                     loss_type='l2', iter_n=200,  save_intermediate=False,
                      save_intermediate_every=1, save_intermediate_path=None,
                      disp_every=1,
                      ):
@@ -47,14 +45,6 @@ def reconstruct_stim(features, net,
         loss_fun = torch.nn.MSELoss(reduction='sum')
     elif loss_type == "L2_with_reg":
         loss_fun = MSE_with_regulariztion(L_lambda=lamda, alpha=p, TV_lambda=TVlambda)
-    elif loss_type == "CorrLoss":
-        loss_fun = CorrLoss()
-    elif loss_type == "FeatCorrLoss":
-        loss_fun = FeatCorrLoss()
-    elif loss_type == "MSE_Corr_FeatCorr":
-        loss_fun = MergeLoss([torch.nn.MSELoss(reduction='sum'),CorrLoss(), FeatCorrLoss() ], weight_list = loss_weight)
-    elif loss_type == "MSE_FeatCorr":
-        loss_fun = MergeLoss([torch.nn.MSELoss(reduction='sum'), FeatCorrLoss() ], weight_list = loss_weight)
     else:
         assert loss_type + ' is not correct'
     # make save dir
@@ -96,9 +86,9 @@ def reconstruct_stim(features, net,
             save_name = 'initial_video.avi'
             save_video(initial_input, save_name, save_intermediate_path, bgr)
 
-            #save_name = 'initial_video.gif'
-            #save_gif(initial_input, save_name, save_intermediate_path, bgr,
-            #         fr_rate=150)
+            save_name = 'initial_video.gif'
+            save_gif(initial_input, save_name, save_intermediate_path, bgr,
+                     fr_rate=150)
 
         else:
             print('Input size is not appropriate for save')
@@ -122,15 +112,13 @@ def reconstruct_stim(features, net,
             layer_weight[layer] = weights[j]
 
     # feature mask
-    if feature_masks is None:
-        feature_masks = create_feature_masks(layer_dict, masks=mask, channels=channel)
+    feature_masks = create_feature_masks(layer_dict, masks=mask, channels=channel)
 
     # iteration for gradient descent
-    input = initial_input.copy().astype(np.float32)
-    if len(input_size) == 3:
-        input_stim = img_preprocess(input, img_mean, img_std, norm)
-    else:
-        input_stim = vid_preprocess(input, img_mean, img_std, norm)
+    input_stim = initial_input.copy().astype(np.float32)
+    input_stim = vid2flow(input_stim)
+    input_stim = flow_preprocess(input_stim, img_mean, img_std, norm)
+
 
     loss_list = np.zeros(iter_n, dtype='float32')
 
@@ -191,9 +179,6 @@ def reconstruct_stim(features, net,
             
             masked_act_j = torch.masked_select(act_j, torch.FloatTensor(mask_j).bool())
             masked_feat_j = torch.masked_select(feat_j, torch.FloatTensor(mask_j).bool())
-            #if loss_type == 'FeatCorrLoss':
-            masked_act_j = masked_act_j.view(act_j.shape)
-            masked_feat_j = masked_feat_j.view(feat_j.shape)
             # calculate loss using pytorch loss function
             loss_j = loss_fun(masked_act_j, masked_feat_j) * layer_weight_j
 
@@ -234,12 +219,11 @@ def reconstruct_stim(features, net,
 
         # gaussian blur
         if image_blur:
-            
             if len(input_size) == 3:
                 input_stim = gaussian_blur(input_stim, sigma)
             else:
                 for i in range(input_stim.shape[1]):
-                    input_stim[:,i] = gaussian_blur(input_stim[:,i], sigma)
+                    input_stim[:, i] = gaussian_blur(input_stim[:, i], sigma)
 
         # disp info
         if (t+1) % disp_every == 0:
@@ -250,27 +234,22 @@ def reconstruct_stim(features, net,
         if save_intermediate and ((t+1) % save_intermediate_every == 0):
             if len(input_size) == 3:
                 save_name = '%05d.jpg' % (t+1)
-                save_img = input_stim.copy()
-                if bgr:
-                    PIL.Image.fromarray(normalise_img(img_deprocess(save_img, img_mean, img_std, norm))[...,[2,1,0]]).save(
-                        os.path.join(save_intermediate_path, save_name))
-                    
-                else:
-                    PIL.Image.fromarray(normalise_img(img_deprocess(save_img, img_mean, img_std, norm))).save(
-                        os.path.join(save_intermediate_path, save_name))
-              
+                PIL.Image.fromarray(normalise_img(img_deprocess(input_stim.copy(), img_mean, img_std, norm))).save(
+                    os.path.join(save_intermediate_path, save_name))
             else:
-                save_stim = input_stim.copy()
+                save_stim = flow_deprocess(input_stim.copy(), img_mean, img_std, norm)
+                save_stim = flow2vid(save_stim, input_ch_num=3)
+
                 # if you install cv2 and ffmpeg, you can use save_video function which save preferred video as video format
                 save_name = '%05d.avi' % (t + 1)
-                save_video(normalise_vid(vid_deprocess(save_stim, img_mean, img_std, norm)), save_name,
-                           save_intermediate_path, bgr,fr_rate=30)
-                #save_name = '%05d.gif' % (t + 1)
-                #save_gif(normalise_vid(vid_deprocess(save_stim, img_mean, img_std, norm)), save_name,
-                #         save_intermediate_path, bgr,
-                #         fr_rate=150)
+                save_video(normalise_vid(save_stim), save_name,
+                           save_intermediate_path, bgr, fr_rate=30)
+                save_name = '%05d.gif' % (t + 1)
+                save_gif(normalise_vid(save_stim), save_name,
+                         save_intermediate_path,
+                         bgr, fr_rate=150)
     # return img
     if len(input_size) == 3:
         return img_deprocess(input_stim, img_mean, img_std, norm), loss_list
     else:
-        return vid_deprocess(input_stim, img_mean, img_std, norm), loss_list
+        return flow_deprocess(input_stim, img_mean, img_std, norm), loss_list
